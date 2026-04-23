@@ -1,0 +1,33 @@
+# NSFW text blocklist for mir/processing/safety.py
+# One term per line, case-insensitive substring match.
+# Lines starting with # are comments and are ignored.
+# Keep terms specific enough to avoid false positives on legitimate content.
+
+# --- Explicit sexual content ---
+pornography
+pornographic
+explicit content
+adult content
+nsfw
+18+
+xxx
+onlyfans
+lewd
+hentai
+erotic fiction
+smut
+explicit roleplay
+
+# --- Solicitation / commercial adult services ---
+escort service
+cam girl
+cam show
+sexting
+sugar daddy
+sugar baby
+
+# --- Graphic violence ---
+gore
+snuff
+torture porn
+execution video
