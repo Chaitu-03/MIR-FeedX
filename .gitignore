@@ -1,0 +1,29 @@
+# Environment / secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Data
+data/raw_images/
+data/*.db
+
+# ML model cache
+*.pt
+*.bin
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# macOS
+.DS_Store
