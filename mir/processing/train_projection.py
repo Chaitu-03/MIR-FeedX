@@ -35,10 +35,11 @@ _PAIRS_PATH = Path("data/projection_pairs.npz")
 _OUT_PATH = Path("models/clip_to_miniLM_projection.pt")
 _CLIP_DIM = 512
 _TEXT_DIM = 384
+_HIDDEN_DIM = 768
 _VAL_SIZE = 500
-_EPOCHS = 50
+_EPOCHS = 80
 _BATCH_SIZE = 256
-_LR = 1e-3
+_LR = 3e-4
 _TARGET_COS = 0.75
 
 
@@ -46,6 +47,27 @@ def _cosine_sim(a: torch.Tensor, b: torch.Tensor) -> float:
     a_n = F.normalize(a, dim=-1)
     b_n = F.normalize(b, dim=-1)
     return (a_n * b_n).sum(dim=-1).mean().item()
+
+
+def _combined_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """MSE + cosine loss. MSE aligns magnitude; cosine aligns direction."""
+    mse = F.mse_loss(pred, target)
+    cos = (1 - F.cosine_similarity(pred, target)).mean()
+    return mse + 0.5 * cos
+
+
+def _build_projection() -> torch.nn.Sequential:
+    """Non-linear projection: CLIP-512 → 768 → MiniLM-384."""
+    model = torch.nn.Sequential(
+        torch.nn.Linear(_CLIP_DIM, _HIDDEN_DIM),
+        torch.nn.GELU(),
+        torch.nn.Dropout(0.1),
+        torch.nn.Linear(_HIDDEN_DIM, _TEXT_DIM),
+    )
+    # Initialise both linear layers with orthogonal weights
+    torch.nn.init.orthogonal_(model[0].weight)
+    torch.nn.init.orthogonal_(model[3].weight)
+    return model
 
 
 def train(
@@ -91,11 +113,10 @@ def train(
 
     loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 
-    # Model: single linear layer, no bias — equivalent to rotation+scale
-    layer = nn.Linear(_CLIP_DIM, _TEXT_DIM, bias=False)
-    nn.init.orthogonal_(layer.weight)   # start from a good geometric basis
-    optimizer = torch.optim.Adam(layer.parameters(), lr=lr)
-    criterion = nn.MSELoss()
+    # Non-linear projection: CLIP-512 → 768 → MiniLM-384
+    layer = _build_projection()
+    optimizer = torch.optim.AdamW(layer.parameters(), lr=lr, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
     log.info("Training projection: %d train / %d val pairs, %d epochs", len(train_perm), val_size, epochs)
 
@@ -105,18 +126,20 @@ def train(
         for clip_b, text_b in loader:
             optimizer.zero_grad()
             pred = layer(clip_b)
-            loss = criterion(pred, text_b)
+            loss = _combined_loss(pred, text_b)
             loss.backward()
             optimizer.step()
             epoch_loss += loss.item()
+        scheduler.step()
 
         if epoch % 10 == 0 or epoch == epochs:
             layer.eval()
             with torch.no_grad():
                 val_cos = _cosine_sim(layer(val_clip), val_text)
             log.info(
-                "Epoch %3d/%d  loss=%.5f  val_cos=%.4f",
+                "Epoch %3d/%d  loss=%.5f  val_cos=%.4f  lr=%.2e",
                 epoch, epochs, epoch_loss / len(loader), val_cos,
+                scheduler.get_last_lr()[0],
             )
 
     # Final validation
@@ -133,7 +156,7 @@ def train(
         )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(layer.state_dict(), str(out_path))
+    torch.save({"state_dict": layer.state_dict(), "clip_dim": _CLIP_DIM, "hidden_dim": _HIDDEN_DIM, "text_dim": _TEXT_DIM}, str(out_path))
     log.info("Saved projection weights → %s", out_path)
 
     return final_cos

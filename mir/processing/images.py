@@ -17,6 +17,7 @@ log = logging.getLogger(__name__)
 
 _CLIP_DIM = 512
 _TEXT_DIM = 384
+_HIDDEN_DIM = 768
 
 
 def _resolve_device() -> str:
@@ -50,15 +51,47 @@ class ProjectionLayer:
         device: str = "cpu",
     ) -> None:
         self._device = device
-        self._linear = nn.Linear(_CLIP_DIM, _TEXT_DIM, bias=False)
 
         path = weights_path or settings.clip_miniLM_projection_path
         if path.exists():
-            state = torch.load(str(path), map_location=device, weights_only=True)
-            self._linear.load_state_dict(state)
+            checkpoint = torch.load(str(path), map_location=device, weights_only=True)
+            if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+                # New format: non-linear projection saved with metadata dict
+                hidden = checkpoint.get("hidden_dim", _HIDDEN_DIM)
+                self._linear = nn.Sequential(
+                    nn.Linear(_CLIP_DIM, hidden),
+                    nn.GELU(),
+                    nn.Dropout(0.1),
+                    nn.Linear(hidden, _TEXT_DIM),
+                )
+                self._linear.load_state_dict(checkpoint["state_dict"])
+            elif isinstance(checkpoint, dict) and any(k.startswith("0.") for k in checkpoint):
+                # Sequential state_dict saved bare (e.g. torch.save(layer.state_dict(), path))
+                # Infer hidden dim from the first linear weight shape
+                hidden = checkpoint["0.weight"].shape[0]
+                self._linear = nn.Sequential(
+                    nn.Linear(_CLIP_DIM, hidden),
+                    nn.GELU(),
+                    nn.Dropout(0.1),
+                    nn.Linear(hidden, _TEXT_DIM),
+                )
+                self._linear.load_state_dict(checkpoint)
+            else:
+                # True legacy: bare nn.Linear(512, 384, bias=False) state_dict
+                log.warning("Loading legacy linear projection weights — retrain recommended")
+                self._linear = nn.Linear(_CLIP_DIM, _TEXT_DIM, bias=False)
+                self._linear.load_state_dict(checkpoint)
             log.info("Loaded projection weights from %s", path)
         else:
-            nn.init.orthogonal_(self._linear.weight)
+            # Untrained fallback: non-linear with orthogonal init
+            self._linear = nn.Sequential(
+                nn.Linear(_CLIP_DIM, _HIDDEN_DIM),
+                nn.GELU(),
+                nn.Dropout(0.1),
+                nn.Linear(_HIDDEN_DIM, _TEXT_DIM),
+            )
+            nn.init.orthogonal_(self._linear[0].weight)
+            nn.init.orthogonal_(self._linear[3].weight)
             log.warning(
                 "Using untrained projection layer — run "
                 "`python -m mir.processing.train_projection` first"
