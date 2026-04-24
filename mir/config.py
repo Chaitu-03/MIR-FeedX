@@ -77,6 +77,11 @@ class Settings(BaseSettings):
 
     # Logging
     log_level: str = "INFO"
+    log_json: bool = False  # JSON renderer in prod, console for dev
+
+    # Cache (Redis)
+    cache_ttl_seconds: int = 300
+    cache_key_prefix: str = "mir:cache:"
 
 
 settings = Settings()
