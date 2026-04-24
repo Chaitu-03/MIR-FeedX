@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     # Download: https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.bin
     fasttext_model_path: Path = Path("data/lid.176.bin")
 
+    # Search tuning — validated by eval harness (Prompt 16b)
+    rrf_k: int = 60                         # RRF constant
+    note_count_boost: float = 0.1           # engagement boost coefficient
+    recency_half_life_days: float = 90.0    # recency decay half-life in days
+
     # Logging
     log_level: str = "INFO"
 

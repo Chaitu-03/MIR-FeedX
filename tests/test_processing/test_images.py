@@ -138,12 +138,13 @@ class TestProjectionLayer:
     def test_orthogonal_fallback_is_not_truncation(self):
         """
         Orthogonal init must not simply copy the first 384 dims of CLIP.
-        Check: the projection matrix is NOT a 384×512 slice of identity.
+        Check: the first projection layer weight is NOT an identity-like matrix.
+        ProjectionLayer now uses Sequential; first linear layer is _linear[0].
         """
         layer = ProjectionLayer(device="cpu")
-        W = layer._linear.weight.detach().numpy()   # (384, 512)
-        # If it were truncation: W[:, :384] == I and W[:, 384:] == 0
-        identity_like = np.eye(384, 512)
+        W = layer._linear[0].weight.detach().numpy()   # (hidden_dim, 512)
+        # If it were truncation: W would equal eye(hidden, 512)
+        identity_like = np.eye(*W.shape)
         assert not np.allclose(W, identity_like, atol=0.01)
 
 
