@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MIR-FeedX Dashboard</title>
+<style>
+  :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #c9d1d9;
+    --accent: #58a6ff; --green: #3fb950; --red: #f85149; --yellow: #d29922; --muted: #8b949e; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, 'Segoe UI', Roboto, monospace; background: var(--bg); color: var(--text); padding: 16px; }
+  h1 { color: var(--accent); margin-bottom: 8px; font-size: 1.5rem; }
+  h2 { color: var(--accent); margin: 16px 0 8px; font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+  .stat-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border); }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label { color: var(--muted); }
+  .stat-value { font-weight: bold; }
+  .ok { color: var(--green); } .err { color: var(--red); } .warn { color: var(--yellow); }
+  button { background: var(--accent); color: #000; border: none; padding: 6px 14px; border-radius: 4px;
+    cursor: pointer; font-size: 0.85rem; margin: 4px 2px; }
+  button:hover { opacity: 0.85; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.danger { background: var(--red); color: #fff; }
+  input, textarea, select { background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    padding: 6px 8px; border-radius: 4px; font-family: inherit; font-size: 0.85rem; width: 100%; }
+  textarea { resize: vertical; min-height: 60px; }
+  pre { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 8px;
+    overflow-x: auto; font-size: 0.8rem; max-height: 400px; overflow-y: auto; white-space: pre-wrap; }
+  .flex { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .tag { display: inline-block; background: var(--border); padding: 2px 6px; border-radius: 3px; font-size: 0.75rem; margin: 1px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  th, td { padding: 4px 8px; border: 1px solid var(--border); text-align: left; }
+  th { background: var(--border); }
+  .test-pass { color: var(--green); } .test-fail { color: var(--red); } .test-skip { color: var(--yellow); }
+  #api-key-bar { background: var(--card); border: 1px solid var(--border); border-radius: 4px;
+    padding: 8px 12px; margin-bottom: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #api-key-bar label { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
+  #api-key-bar input { max-width: 320px; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .post-card { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 8px; margin: 6px 0; }
+  .post-card .meta { color: var(--muted); font-size: 0.75rem; }
+</style>
+</head>
+<body>
+
+<h1>MIR-FeedX Dashboard</h1>
+
+<div id="api-key-bar">
+  <label>API Key:</label>
+  <input type="password" id="api-key" placeholder="Paste API key (from create-api-key)" />
+  <button onclick="saveKey()">Save</button>
+  <button onclick="genKey()">Generate New Key</button>
+  <span id="key-status" style="font-size:0.8rem"></span>
+</div>
+
+<!-- HEALTH + STATS -->
+<div class="grid">
+  <div class="card">
+    <h2>Health</h2>
+    <div id="health-box">Loading...</div>
+    <button onclick="loadHealth()" style="margin-top:8px">Refresh</button>
+  </div>
+  <div class="card">
+    <h2>Stats</h2>
+    <div id="stats-box">Loading...</div>
+    <button onclick="loadStats()" style="margin-top:8px">Refresh</button>
+  </div>
+  <div class="card">
+    <h2>Crawl State</h2>
+    <div id="crawl-box">Loading...</div>
+    <div class="flex" style="margin-top:8px">
+      <button onclick="loadCrawl()">Refresh</button>
+      <button onclick="resetDead()" class="danger">Reset Dead→Active</button>
+    </div>
+  </div>
+</div>
+
+<!-- DB EXPLORER -->
+<div class="card">
+  <h2>DB Explorer</h2>
+  <div class="flex" style="margin-bottom:8px">
+    <select id="table-select" style="max-width:180px">
+      <option value="posts">posts</option>
+      <option value="accounts">accounts</option>
+      <option value="tags">tags</option>
+      <option value="crawl_state">crawl_state</option>
+      <option value="communities">communities</option>
+      <option value="post_tags">post_tags</option>
+      <option value="api_keys">api_keys</option>
+    </select>
+    <input type="number" id="table-limit" value="20" min="1" max="500" style="max-width:80px" placeholder="Limit" />
+    <button onclick="loadTable()">Fetch</button>
+  </div>
+  <div id="table-box"></div>
+</div>
+
+<!-- RAW SQL -->
+<div class="card">
+  <h2>SQL Query</h2>
+  <textarea id="sql-input" placeholder="SELECT COUNT(*) FROM posts WHERE nsfw = false;">SELECT blog_name, status, last_crawled_at, fail_count FROM crawl_state ORDER BY last_crawled_at DESC NULLS LAST;</textarea>
+  <div class="flex" style="margin-top:6px">
+    <button onclick="runSQL()">Run</button>
+    <span id="sql-status" style="font-size:0.8rem;color:var(--muted)"></span>
+  </div>
+  <pre id="sql-output" style="margin-top:6px"></pre>
+  <details style="margin-top:8px">
+    <summary style="color:var(--muted);cursor:pointer;font-size:0.85rem">Sample Queries</summary>
+    <div style="padding:8px;font-size:0.8rem">
+      <p><strong>Row counts:</strong></p>
+      <code class="sample-q">SELECT 'posts' AS tbl, COUNT(*) FROM posts UNION ALL SELECT 'accounts', COUNT(*) FROM accounts UNION ALL SELECT 'tags', COUNT(*) FROM tags UNION ALL SELECT 'communities', COUNT(*) FROM communities;</code>
+      <p style="margin-top:6px"><strong>Post breakdown:</strong></p>
+      <code class="sample-q">SELECT COUNT(*) FILTER (WHERE nsfw=false) AS sfw, COUNT(*) FILTER (WHERE nsfw=true) AS nsfw, COUNT(*) FILTER (WHERE image_embedding IS NOT NULL) AS with_img, COUNT(*) FILTER (WHERE body_clean IS NOT NULL) AS with_text FROM posts;</code>
+      <p style="margin-top:6px"><strong>Latest posts:</strong></p>
+      <code class="sample-q">SELECT p.id, a.blog_name, LEFT(p.body_clean, 80) AS body, p.note_count, p.nsfw, p.published_at FROM posts p JOIN accounts a ON a.id = p.account_id ORDER BY p.created_at DESC LIMIT 20;</code>
+      <p style="margin-top:6px"><strong>Top tags:</strong></p>
+      <code class="sample-q">SELECT name, usage_count FROM tags ORDER BY usage_count DESC LIMIT 20;</code>
+      <p style="margin-top:6px"><strong>Crawl progress:</strong></p>
+      <code class="sample-q">SELECT blog_name, status, last_crawled_at, fail_count, last_timestamp FROM crawl_state ORDER BY last_crawled_at DESC NULLS LAST;</code>
+      <p style="margin-top:6px"><strong>Blogs with most posts:</strong></p>
+      <code class="sample-q">SELECT a.blog_name, COUNT(p.id) AS post_count FROM accounts a LEFT JOIN posts p ON p.account_id = a.id GROUP BY a.blog_name ORDER BY post_count DESC LIMIT 20;</code>
+    </div>
+  </details>
+</div>
+
+<!-- SEARCH -->
+<div class="card">
+  <h2>Search</h2>
+  <div class="flex" style="margin-bottom:8px">
+    <input type="text" id="search-query" placeholder="landscape photography" style="flex:1" />
+    <select id="search-type" style="max-width:140px">
+      <option value="general">General</option>
+      <option value="accounts">Accounts</option>
+      <option value="tags">Tags</option>
+      <option value="communities">Communities</option>
+    </select>
+    <input type="number" id="search-limit" value="20" min="1" max="100" style="max-width:70px" />
+    <button onclick="doSearch()">Search</button>
+  </div>
+  <div id="search-filters" style="margin-bottom:6px;font-size:0.8rem;color:var(--muted)">
+    <span>Filters (general only): </span>
+    <input type="text" id="f-lang" placeholder="lang (en)" style="max-width:60px;display:inline-block" />
+    <input type="number" id="f-min-notes" placeholder="min notes" style="max-width:90px;display:inline-block" />
+    <input type="text" id="f-tags" placeholder="tags (comma-sep)" style="max-width:150px;display:inline-block" />
+  </div>
+  <div id="search-results"></div>
+</div>
+
+<!-- TESTS -->
+<div class="card">
+  <h2>Test Runner</h2>
+  <div class="flex">
+    <button onclick="runTests('all')">Run All Tests</button>
+    <button onclick="runTests('test_api')">API Tests</button>
+    <button onclick="runTests('test_search')">Search Tests</button>
+    <button onclick="runTests('test_processing')">Processing Tests</button>
+    <button onclick="runTests('test_ingestion')">Ingestion Tests</button>
+    <button onclick="runTests('test_workers')">Worker Tests</button>
+    <button onclick="runTests('eval')">Eval Tests</button>
+    <button onclick="runHealthTests()">Health Checks</button>
+  </div>
+  <pre id="test-output" style="margin-top:8px">Click a button to run tests...</pre>
+</div>
+
+<!-- SEED CRAWL -->
+<div class="card">
+  <h2>Seed Crawl Manager</h2>
+  <div class="flex" style="margin-bottom:8px">
+    <button onclick="loadSeeds()">Show Seed Blogs</button>
+    <button onclick="seedCrawl()">Seed All (skip existing)</button>
+    <button onclick="triggerCrawl()">Trigger Crawl Now</button>
+  </div>
+  <pre id="seed-output">Click to load...</pre>
+</div>
+
+<script>
+const BASE = '';
+let API_KEY = localStorage.getItem('mir_api_key') || '';
+document.getElementById('api-key').value = API_KEY;
+
+function saveKey() {
+  API_KEY = document.getElementById('api-key').value.trim();
+  localStorage.setItem('mir_api_key', API_KEY);
+  document.getElementById('key-status').innerHTML = '<span class="ok">Saved</span>';
+}
+
+async function genKey() {
+  try {
+    const r = await fetch(BASE + '/dashboard/api/generate-key', { method: 'POST' });
+    const d = await r.json();
+    if (d.key) {
+      document.getElementById('api-key').value = d.key;
+      API_KEY = d.key;
+      localStorage.setItem('mir_api_key', API_KEY);
+      document.getElementById('key-status').innerHTML = '<span class="ok">Generated & saved!</span>';
+    } else {
+      document.getElementById('key-status').innerHTML = '<span class="err">' + (d.error || 'Failed') + '</span>';
+    }
+  } catch (e) { document.getElementById('key-status').innerHTML = '<span class="err">' + e + '</span>'; }
+}
+
+function headers() { return { 'Content-Type': 'application/json', 'X-API-Key': API_KEY }; }
+
+async function loadHealth() {
+  try {
+    const r = await fetch(BASE + '/api/v1/health');
+    const d = await r.json();
+    let h = '';
+    for (const [k, v] of Object.entries(d)) {
+      if (typeof v === 'object' && v !== null) {
+        const cls = v.status === 'connected' ? 'ok' : 'err';
+        h += `<div class="stat-row"><span class="stat-label">${k}</span><span class="stat-value ${cls}">${v.status} ${v.latency_ms ? '(' + v.latency_ms.toFixed(1) + 'ms)' : ''}</span></div>`;
+      } else {
+        const cls = v === 'ok' ? 'ok' : 'warn';
+        h += `<div class="stat-row"><span class="stat-label">${k}</span><span class="stat-value ${cls}">${v}</span></div>`;
+      }
+    }
+    document.getElementById('health-box').innerHTML = h;
+  } catch (e) { document.getElementById('health-box').innerHTML = '<span class="err">Error: ' + e + '</span>'; }
+}
+
+async function loadStats() {
+  try {
+    const r = await fetch(BASE + '/dashboard/api/stats');
+    const d = await r.json();
+    let h = '';
+    for (const [k, v] of Object.entries(d)) {
+      if (k === 'crawl_status' && v) {
+        h += `<div class="stat-row"><span class="stat-label">${k}</span><span class="stat-value">${Object.entries(v).map(([s,c]) => s+':'+c).join(', ')}</span></div>`;
+      } else {
+        h += `<div class="stat-row"><span class="stat-label">${k}</span><span class="stat-value">${v === null ? '<span class="warn">null</span>' : v}</span></div>`;
+      }
+    }
+    document.getElementById('stats-box').innerHTML = h;
+  } catch (e) { document.getElementById('stats-box').innerHTML = '<span class="err">Error: ' + e + '</span>'; }
+}
+
+async function loadCrawl() {
+  try {
+    const r = await fetch(BASE + '/dashboard/api/crawl-state');
+    const d = await r.json();
+    if (!d.rows || d.rows.length === 0) {
+      document.getElementById('crawl-box').innerHTML = '<span class="warn">No crawl states</span>';
+      return;
+    }
+    let h = '<table><tr><th>Blog</th><th>Status</th><th>Last Crawl</th><th>Fails</th></tr>';
+    for (const r of d.rows) {
+      const cls = r.status === 'active' ? 'ok' : r.status === 'dead' ? 'err' : 'warn';
+      const t = r.last_crawled_at ? new Date(r.last_crawled_at).toLocaleString() : 'Never';
+      h += `<tr><td>${r.blog_name}</td><td class="${cls}">${r.status}</td><td>${t}</td><td>${r.fail_count}</td></tr>`;
+    }
+    h += '</table>';
+    document.getElementById('crawl-box').innerHTML = h;
+  } catch (e) { document.getElementById('crawl-box').innerHTML = '<span class="err">' + e + '</span>'; }
+}
+
+async function resetDead() {
+  if (!confirm('Reset all dead blogs to active?')) return;
+  const r = await fetch(BASE + '/dashboard/api/reset-dead', { method: 'POST' });
+  const d = await r.json();
+  alert('Reset ' + d.updated + ' blogs');
+  loadCrawl();
+}
+
+async function loadTable() {
+  const table = document.getElementById('table-select').value;
+  const limit = document.getElementById('table-limit').value || 20;
+  try {
+    const r = await fetch(BASE + `/dashboard/api/table?name=${table}&limit=${limit}`);
+    const d = await r.json();
+    if (!d.rows || d.rows.length === 0) {
+      document.getElementById('table-box').innerHTML = '<span class="warn">No rows</span>';
+      return;
+    }
+    const cols = Object.keys(d.rows[0]);
+    let h = '<div style="overflow-x:auto"><table><tr>' + cols.map(c => '<th>' + c + '</th>').join('') + '</tr>';
+    for (const row of d.rows) {
+      h += '<tr>' + cols.map(c => {
+        let v = row[c];
+        if (v === null) return '<td><span class="warn">null</span></td>';
+        if (typeof v === 'object') v = JSON.stringify(v);
+        if (typeof v === 'string' && v.length > 100) v = v.slice(0, 100) + '...';
+        return '<td>' + v + '</td>';
+      }).join('') + '</tr>';
+    }
+    h += '</table></div><div style="color:var(--muted);font-size:0.75rem;margin-top:4px">' + d.rows.length + ' rows</div>';
+    document.getElementById('table-box').innerHTML = h;
+  } catch (e) { document.getElementById('table-box').innerHTML = '<span class="err">' + e + '</span>'; }
+}
+
+async function runSQL() {
+  const sql = document.getElementById('sql-input').value.trim();
+  if (!sql) return;
+  document.getElementById('sql-status').innerHTML = '<span class="spinner"></span> Running...';
+  try {
+    const r = await fetch(BASE + '/dashboard/api/sql', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: sql })
+    });
+    const d = await r.json();
+    if (d.error) {
+      document.getElementById('sql-output').textContent = 'ERROR: ' + d.error;
+      document.getElementById('sql-status').innerHTML = '<span class="err">Error</span>';
+    } else {
+      document.getElementById('sql-output').textContent = JSON.stringify(d.rows, null, 2);
+      document.getElementById('sql-status').innerHTML = '<span class="ok">' + d.rows.length + ' rows, ' + d.elapsed_ms + 'ms</span>';
+    }
+  } catch (e) {
+    document.getElementById('sql-output').textContent = 'Error: ' + e;
+    document.getElementById('sql-status').innerHTML = '<span class="err">Error</span>';
+  }
+}
+
+// click sample queries to populate
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('sample-q')) {
+    document.getElementById('sql-input').value = e.target.textContent;
+  }
+});
+
+async function doSearch() {
+  const q = document.getElementById('search-query').value.trim();
+  const type = document.getElementById('search-type').value;
+  const limit = parseInt(document.getElementById('search-limit').value) || 20;
+  if (!q) return;
+  if (!API_KEY) { document.getElementById('search-results').innerHTML = '<span class="err">Set API key first</span>'; return; }
+
+  document.getElementById('search-results').innerHTML = '<span class="spinner"></span> Searching...';
+
+  try {
+    let r;
+    if (type === 'general') {
+      const filters = {};
+      const lang = document.getElementById('f-lang').value.trim();
+      const minNotes = parseInt(document.getElementById('f-min-notes').value);
+      const tags = document.getElementById('f-tags').value.trim();
+      if (lang) filters.lang = lang;
+      if (minNotes > 0) filters.min_notes = minNotes;
+      if (tags) filters.tags = tags.split(',').map(t => t.trim());
+      r = await fetch(BASE + '/api/v1/search/general', {
+        method: 'POST', headers: headers(),
+        body: JSON.stringify({ query: q, limit_posts: limit, filters })
+      });
+    } else {
+      r = await fetch(BASE + `/api/v1/search/${type}?q=${encodeURIComponent(q)}&limit=${limit}`, { headers: headers() });
+    }
+    const d = await r.json();
+    if (r.status === 401) {
+      document.getElementById('search-results').innerHTML = '<span class="err">401 — Invalid API key. Generate one first.</span>';
+      return;
+    }
+    if (!r.ok) {
+      document.getElementById('search-results').innerHTML = '<span class="err">' + JSON.stringify(d) + '</span>';
+      return;
+    }
+    document.getElementById('search-results').innerHTML = '<pre>' + JSON.stringify(d, null, 2) + '</pre>';
+  } catch (e) { document.getElementById('search-results').innerHTML = '<span class="err">' + e + '</span>'; }
+}
+
+async function runTests(suite) {
+  document.getElementById('test-output').textContent = 'Running tests... (may take a while)';
+  try {
+    const r = await fetch(BASE + `/dashboard/api/tests?suite=${suite}`, { method: 'POST' });
+    const d = await r.json();
+    let out = `Exit code: ${d.exit_code}\n`;
+    out += `Passed: ${d.passed}  Failed: ${d.failed}  Errors: ${d.errors}  Skipped: ${d.skipped}\n`;
+    out += `Duration: ${d.duration_s}s\n\n`;
+    out += d.output;
+    document.getElementById('test-output').textContent = out;
+  } catch (e) { document.getElementById('test-output').textContent = 'Error: ' + e; }
+}
+
+async function runHealthTests() {
+  document.getElementById('test-output').textContent = 'Running health checks...';
+  try {
+    const r = await fetch(BASE + '/dashboard/api/health-tests', { method: 'POST' });
+    const d = await r.json();
+    let out = '';
+    for (const t of d.checks) {
+      const icon = t.ok ? '  PASS' : '  FAIL';
+      out += `${icon}  ${t.name}: ${t.detail}\n`;
+    }
+    out += `\n${d.passed}/${d.total} checks passed`;
+    document.getElementById('test-output').textContent = out;
+  } catch (e) { document.getElementById('test-output').textContent = 'Error: ' + e; }
+}
+
+async function loadSeeds() {
+  try {
+    const r = await fetch(BASE + '/dashboard/api/seeds');
+    const d = await r.json();
+    let out = 'Seed blogs by genre:\n\n';
+    for (const [genre, blogs] of Object.entries(d.seeds)) {
+      out += `${genre}:\n  ${blogs.join(', ')}\n\n`;
+    }
+    out += `Total: ${d.total} blogs\n`;
+    out += `Already in DB: ${d.existing_count}\n`;
+    out += `New: ${d.new_count}`;
+    document.getElementById('seed-output').textContent = out;
+  } catch (e) { document.getElementById('seed-output').textContent = 'Error: ' + e; }
+}
+
+async function seedCrawl() {
+  if (!confirm('Seed all new blogs into crawl_state? (existing will be skipped)')) return;
+  document.getElementById('seed-output').textContent = 'Seeding...';
+  try {
+    const r = await fetch(BASE + '/dashboard/api/seed-crawl', { method: 'POST' });
+    const d = await r.json();
+    document.getElementById('seed-output').textContent = `Seeded ${d.added} new blogs. Skipped ${d.skipped} existing.\nTotal in crawl_state: ${d.total}`;
+    loadCrawl();
+  } catch (e) { document.getElementById('seed-output').textContent = 'Error: ' + e; }
+}
+
+async function triggerCrawl() {
+  try {
+    const r = await fetch(BASE + '/dashboard/api/trigger-crawl', { method: 'POST' });
+    const d = await r.json();
+    alert('Enqueued ' + d.enqueued + ' blog crawl tasks');
+  } catch (e) { alert('Error: ' + e); }
+}
+
+// Auto-load on page open
+loadHealth();
+loadStats();
+loadCrawl();
+</script>
+</body>
+</html>

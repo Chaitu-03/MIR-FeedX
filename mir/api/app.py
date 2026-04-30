@@ -13,16 +13,21 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from mir.api.routers import admin as admin_router
+from mir.api.routers import dashboard as dashboard_router
 from mir.api.routers import health as health_router
 from mir.api.routers import search as search_router
 from mir.config import settings
 from mir.search.cache import close_redis
 from mir.search.vector_store import QdrantManager
+
+_STATIC_DIR = Path(__file__).parent / "static"
 
 log = logging.getLogger(__name__)
 
@@ -77,6 +82,11 @@ def create_app() -> FastAPI:
     app.include_router(health_router.router)
     app.include_router(search_router.router)
     app.include_router(admin_router.router)
+    app.include_router(dashboard_router.router)
+
+    @app.get("/", include_in_schema=False)
+    async def root():
+        return FileResponse(_STATIC_DIR / "dashboard.html")
 
     return app
 
