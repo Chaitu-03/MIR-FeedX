@@ -50,7 +50,7 @@ dependencies = [
 
     # Observability
     "structlog>=24.1.0",
-    "prometheus-client>=0.20.0",
+
 ]
 
 [project.optional-dependencies]

@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     # The live count is checked via: SELECT COUNT(*) FROM posts WHERE nsfw = false.
     target_post_count: Annotated[int, Field(gt=0)] = 50_000
 
+    # Beat: how often to enqueue crawl_active_blogs (env: CRAWL_INTERVAL_MINUTES).
+    # Default 15 (verification). Staging 30–60, production 360.
+    crawl_interval_minutes: Annotated[int, Field(gt=0)] = 15
+
     # Model artefacts
     models_dir: Path = Path("models")
     clip_miniLM_projection_path: Path = Path("models/clip_to_miniLM_projection.pt")
