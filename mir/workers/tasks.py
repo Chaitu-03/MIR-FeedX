@@ -104,7 +104,7 @@ async def _crawl_blog_async(blog_name: str) -> dict:
         from mir.ingestion.crawler import Crawler
         from mir.ingestion.images import ImageDownloader
 
-        async with TumblrClient(api_keys=settings.tumblr_api_keys) as client:
+        async with TumblrClient() as client:
             downloader = ImageDownloader()
             crawler = Crawler(session=db, client=client, downloader=downloader)
             await crawler.crawl(seed_blogs=[blog_name])
