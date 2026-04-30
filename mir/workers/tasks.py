@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -91,6 +92,12 @@ async def _crawl_blog_async(blog_name: str) -> dict:
         ) or 0
         if count >= settings.target_post_count:
             log.info("Threshold met (%d) — crawl_blog(%s) is a no-op", count, blog_name)
+            await db.execute(
+                update(CrawlState)
+                .where(CrawlState.blog_name == blog_name)
+                .values(last_crawled_at=datetime.now(timezone.utc))
+            )
+            await db.commit()
             return {"status": "threshold_met", "count": count, "blog": blog_name}
 
         from mir.ingestion.client import TumblrClient
@@ -106,13 +113,15 @@ async def _crawl_blog_async(blog_name: str) -> dict:
             select(func.count()).select_from(Post).where(Post.nsfw == false())
         ) or 0
 
+        values: dict[str, Any] = {"last_crawled_at": datetime.now(timezone.utc)}
         if new_count >= settings.target_post_count:
-            await db.execute(
-                update(CrawlState)
-                .where(CrawlState.blog_name == blog_name)
-                .values(status="paused")
-            )
-            await db.commit()
+            values["status"] = "paused"
+        await db.execute(
+            update(CrawlState)
+            .where(CrawlState.blog_name == blog_name)
+            .values(**values)
+        )
+        await db.commit()
 
         return {"status": "ok", "blog": blog_name, "count": new_count}
 

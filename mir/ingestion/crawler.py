@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import false, func, select
@@ -121,6 +122,7 @@ class Crawler:
         """
         blog_name = state.blog_name
         state.status = "active"
+        state.last_crawled_at = datetime.now(timezone.utc)
         await self._db.commit()
 
         consecutive_failures = state.fail_count
@@ -192,6 +194,7 @@ class Crawler:
                 await self._process_post(post, blog_name)
                 await self._discover_blogs(post)
 
+            state.last_crawled_at = datetime.now(timezone.utc)
             await self._db.commit()
             await self._check_storage()
 

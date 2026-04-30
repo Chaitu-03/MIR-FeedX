@@ -8,12 +8,14 @@ Queues:
   - 'dead_letter'  manual inspection queue for tasks that exhausted retries
 
 Beat schedule:
-  - crawl_active_blogs every 6h
+  - crawl_active_blogs every settings.crawl_interval_minutes (env: CRAWL_INTERVAL_MINUTES, default 15)
   - rebuild_communities daily at 03:00 UTC
   - nightly_optimize    daily at 04:00 UTC
   - cleanup_cache       hourly
 """
 from __future__ import annotations
+
+from datetime import timedelta
 
 from celery import Celery, signals
 from celery.schedules import crontab
@@ -58,7 +60,7 @@ celery_app.conf.update(
     beat_schedule={
         "crawl-active-blogs": {
             "task": "mir.workers.tasks.crawl_active_blogs",
-            "schedule": crontab(minute=0, hour="*/6"),
+            "schedule": timedelta(minutes=settings.crawl_interval_minutes),
         },
         "rebuild-communities": {
             "task": "mir.workers.tasks.rebuild_communities",
