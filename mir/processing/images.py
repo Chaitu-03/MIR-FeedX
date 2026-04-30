@@ -243,7 +243,11 @@ class ImageProcessor:
         miss_phashes: list[str] = []
 
         for i, path in enumerate(image_paths):
-            img = Image.open(path).convert("RGB")
+            try:
+                img = Image.open(path).convert("RGB")
+            except Exception as exc:
+                log.warning("Skipping unreadable image %s: %s", path, exc)
+                continue
             ph = self._phash(img)
             cached = self._cache_get(ph)
             if cached is not None:
@@ -266,7 +270,10 @@ class ImageProcessor:
                 results[idx] = emb
                 self._cache_set(ph, emb)
 
-        return np.stack(results)  # type: ignore[arg-type]
+        valid = [r for r in results if r is not None]
+        if not valid:
+            return np.zeros((0, _CLIP_DIM), dtype=np.float32)
+        return np.stack(valid)
 
     def project(self, embedding: np.ndarray) -> np.ndarray:
         """Project a 512-d (or N×512) CLIP embedding to 384-d MiniLM space."""
