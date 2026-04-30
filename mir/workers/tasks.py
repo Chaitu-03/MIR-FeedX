@@ -342,7 +342,7 @@ def nightly_optimize() -> dict:
 
 # ---------------------------------------------------------------------------
 # cleanup_cache — hourly orphan sweep (mostly a no-op with TTLs, but useful
-# to purge well-known stale keys and update queue_depth gauges).
+# to purge well-known stale keys).
 # ---------------------------------------------------------------------------
 
 @celery_app.task(name="mir.workers.tasks.cleanup_cache")

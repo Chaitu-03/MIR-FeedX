@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mir.api.auth import require_api_key
 from mir.api.deps import get_db, get_qdrant
 from mir.api.schemas import DependencyHealth, HealthResponse, StatsResponse
-from mir.metrics import metrics_response
+
 from mir.search.cache import get_redis
 
 router = APIRouter(prefix="/api/v1", tags=["health"])
@@ -83,10 +83,6 @@ async def readiness(request: Request, db: AsyncSession = Depends(get_db)):
     )
 
 
-@router.get("/metrics", include_in_schema=False)
-async def metrics():
-    return metrics_response()
-
 
 @router.get("/stats", response_model=StatsResponse, summary="Cluster stats")
 async def stats(
@@ -95,12 +91,20 @@ async def stats(
     _api_key=Depends(require_api_key),
 ) -> StatsResponse:
     posts_count = (await db.execute(text("SELECT COUNT(*) FROM posts WHERE nsfw = false"))).scalar() or 0
+    nsfw_count = (await db.execute(text("SELECT COUNT(*) FROM posts WHERE nsfw = true"))).scalar() or 0
     acc_count = (await db.execute(text("SELECT COUNT(*) FROM accounts"))).scalar() or 0
     tag_count = (await db.execute(text("SELECT COUNT(*) FROM tags"))).scalar() or 0
     last_crawl = (await db.execute(
         text("SELECT MAX(last_crawled_at) FROM crawl_state")
     )).scalar()
 
+    # Crawl status breakdown
+    crawl_rows = (await db.execute(
+        text("SELECT status, COUNT(*) AS cnt FROM crawl_state GROUP BY status")
+    )).fetchall()
+    crawl_status = {row[0]: row[1] for row in crawl_rows} if crawl_rows else None
+
+    # Qdrant vector count
     qd_posts = None
     try:
         info = await asyncio.to_thread(qdrant.get_collection_info, "posts")
@@ -108,11 +112,27 @@ async def stats(
     except Exception:
         pass
 
+    # Celery queue depth via Redis LLEN
+    q_depth = None
+    try:
+        redis_client = get_redis()
+        depths = await asyncio.gather(
+            redis_client.llen("default"),
+            redis_client.llen("gpu"),
+            redis_client.llen("dead_letter"),
+        )
+        q_depth = sum(d or 0 for d in depths)
+    except Exception:
+        pass
+
     return StatsResponse(
         total_posts=int(posts_count),
         total_accounts=int(acc_count),
         total_tags=int(tag_count),
+        nsfw_flagged_count=int(nsfw_count),
         qdrant_posts_count=qd_posts,
-        queue_depth=None,
+        queue_depth=q_depth,
+        crawl_status=crawl_status,
         last_crawl=last_crawl,
     )
+

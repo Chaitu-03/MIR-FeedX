@@ -4,6 +4,7 @@ Search endpoints — Prompt 12.
 """
 from __future__ import annotations
 
+import logging
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -23,7 +24,6 @@ from mir.api.schemas import (
     TagResult,
     TagSearchResponse,
 )
-from mir.metrics import cache_hits_total, cache_misses_total, search_duration_seconds
 from mir.search.account_name import search_accounts_by_name
 from mir.search.cache import cache_get, cache_set, make_cache_key
 from mir.search.communities import search_communities
@@ -32,6 +32,8 @@ from mir.search.general import (
     GeneralSearchResolver,
 )
 from mir.search.tags import search_tags as core_search_tags
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/search", tags=["search"])
 
@@ -62,9 +64,9 @@ async def general_search(
     )
     hit = await cache_get(key)
     if hit is not None:
-        cache_hits_total.labels(query_type="general").inc()
+        log.debug("cache_hit query_type=general")
         return GeneralSearchResponse.model_validate(hit)
-    cache_misses_total.labels(query_type="general").inc()
+    log.debug("cache_miss query_type=general")
 
     t0 = time.perf_counter()
     try:
@@ -86,7 +88,8 @@ async def general_search(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
-        search_duration_seconds.labels(query_type="general").observe(time.perf_counter() - t0)
+        elapsed = time.perf_counter() - t0
+        log.info("search_duration query_type=general elapsed=%.4fs", elapsed)
 
     response = GeneralSearchResponse(
         posts=[PostResult(**p.__dict__) for p in result.posts],
@@ -115,15 +118,13 @@ async def account_name_search(
     key = make_cache_key("accounts", q, extra={"limit": limit})
     hit = await cache_get(key)
     if hit is not None:
-        cache_hits_total.labels(query_type="accounts").inc()
+        log.debug("cache_hit query_type=accounts")
         return AccountNameSearchResponse.model_validate(hit)
-    cache_misses_total.labels(query_type="accounts").inc()
+    log.debug("cache_miss query_type=accounts")
 
     t0 = time.perf_counter()
-    try:
-        results = await search_accounts_by_name(db, q, limit=limit)
-    finally:
-        search_duration_seconds.labels(query_type="accounts").observe(time.perf_counter() - t0)
+    results = await search_accounts_by_name(db, q, limit=limit)
+    log.info("search_duration query_type=accounts elapsed=%.4fs", time.perf_counter() - t0)
 
     response = AccountNameSearchResponse(
         accounts=[AccountNameResult(**r.__dict__) for r in results]
@@ -150,15 +151,13 @@ async def tag_search(
     key = make_cache_key("tags", q, extra={"limit": limit})
     hit = await cache_get(key)
     if hit is not None:
-        cache_hits_total.labels(query_type="tags").inc()
+        log.debug("cache_hit query_type=tags")
         return TagSearchResponse.model_validate(hit)
-    cache_misses_total.labels(query_type="tags").inc()
+    log.debug("cache_miss query_type=tags")
 
     t0 = time.perf_counter()
-    try:
-        results = await core_search_tags(db, qdrant, text_processor, q, limit=limit)
-    finally:
-        search_duration_seconds.labels(query_type="tags").observe(time.perf_counter() - t0)
+    results = await core_search_tags(db, qdrant, text_processor, q, limit=limit)
+    log.info("search_duration query_type=tags elapsed=%.4fs", time.perf_counter() - t0)
 
     response = TagSearchResponse(tags=[TagResult(**r.__dict__) for r in results])
     await cache_set(key, response.model_dump(mode="json"))
@@ -182,15 +181,13 @@ async def community_search(
     key = make_cache_key("communities", q, extra={"limit": limit})
     hit = await cache_get(key)
     if hit is not None:
-        cache_hits_total.labels(query_type="communities").inc()
+        log.debug("cache_hit query_type=communities")
         return CommunitySearchResponse.model_validate(hit)
-    cache_misses_total.labels(query_type="communities").inc()
+    log.debug("cache_miss query_type=communities")
 
     t0 = time.perf_counter()
-    try:
-        results = await search_communities(db, text_processor, q, limit=limit)
-    finally:
-        search_duration_seconds.labels(query_type="communities").observe(time.perf_counter() - t0)
+    results = await search_communities(db, text_processor, q, limit=limit)
+    log.info("search_duration query_type=communities elapsed=%.4fs", time.perf_counter() - t0)
 
     response = CommunitySearchResponse(
         communities=[CommunityResult(**r.__dict__) for r in results]

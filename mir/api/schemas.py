@@ -133,8 +133,10 @@ class StatsResponse(BaseModel):
     total_posts: int
     total_accounts: int
     total_tags: int
+    nsfw_flagged_count: int | None = None
     qdrant_posts_count: int | None = None
     queue_depth: int | None = None
+    crawl_status: dict[str, int] | None = None
     last_crawl: datetime | None = None
 
 
