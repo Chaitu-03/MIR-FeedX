@@ -141,6 +141,8 @@ async def _crawl_active_blogs_async() -> dict:
     for blog in rows:
         crawl_blog.delay(blog)
         enqueued += 1
+    if enqueued == 0:
+        log.warning("crawl_active_blogs: no active/pending blogs — all blogs may be dead or paused. Seed new blogs via crawl_state.")
     return {"enqueued": enqueued}
 
 
