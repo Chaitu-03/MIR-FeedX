@@ -40,10 +40,19 @@ async def _lookup_key(db: AsyncSession, raw_key: str) -> APIKey | None:
     return None
 
 
+_OPEN_KEY = APIKey(id=0, key_hash="", label="open-access", is_admin=False)
+
+
 async def require_api_key(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
     db: AsyncSession = Depends(_get_db),
 ) -> APIKey:
+    from mir.config import settings
+
+    # When api_keys_enabled=False (dev mode), skip auth entirely.
+    if not settings.api_keys_enabled:
+        return _OPEN_KEY
+
     if not x_api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -75,7 +75,7 @@ class ImageDownloader:
                     resp.raise_for_status()
                     raw = await resp.read()
             except Exception as exc:
-                log.warning("Failed to download %s: %s", url, exc)
+                log.debug("Failed to download %s: %s", url, exc)
                 return None
 
             # --- open & hash ---
