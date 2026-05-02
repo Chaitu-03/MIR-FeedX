@@ -26,8 +26,27 @@ class Settings(BaseSettings):
     # Redis / Celery
     redis_url: str = "redis://localhost:6379/0"
 
-    # Tumblr API keys — comma-separated in env, parsed into a list
+    # Tumblr API credentials — list of {"consumer_key": ..., "secret": ...} pairs.
+    # JSON-encoded in .env. Keys rotated round-robin; on rate-limit / auth failure
+    # the offending key is put on cooldown and the next is tried.
+    tumblr_api_credentials: list[dict[str, str]] = Field(default_factory=list)
+
+    # Legacy: bare list of consumer keys. Used as fallback if credentials empty.
     tumblr_api_keys: list[str] = Field(default_factory=list)
+
+    @field_validator("tumblr_api_credentials", mode="before")
+    @classmethod
+    def _parse_credentials(cls, v: object) -> list[dict[str, str]]:
+        if isinstance(v, list):
+            out = []
+            for entry in v:
+                if isinstance(entry, dict) and entry.get("consumer_key"):
+                    out.append({
+                        "consumer_key": str(entry["consumer_key"]).strip(),
+                        "secret": str(entry.get("secret", "")).strip(),
+                    })
+            return out
+        return []
 
     @field_validator("tumblr_api_keys", mode="before")
     @classmethod
@@ -39,6 +58,13 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [k.strip() for k in v.split(",") if k.strip()]
         return []
+
+    @property
+    def all_consumer_keys(self) -> list[str]:
+        """Unified accessor: prefer credentials, fall back to legacy api_keys."""
+        if self.tumblr_api_credentials:
+            return [c["consumer_key"] for c in self.tumblr_api_credentials]
+        return list(self.tumblr_api_keys)
 
     # NSFW filtering
     nsfw_threshold: Annotated[float, Field(ge=0.0, le=1.0)] = 0.75

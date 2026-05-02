@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import random
 import time
 from typing import Any
 
@@ -47,22 +46,45 @@ redis.call('EXPIRE', key, 7200)
 return 1
 """
 
-_BACKOFF_BASE = 2.0
-_BACKOFF_MAX = 64.0
-
-
 class TumblrClient:
-    """Async Tumblr API v2 client with key rotation and Redis-backed rate limiting."""
+    """Async Tumblr API v2 client with key rotation and Redis-backed rate limiting.
+
+    Key rotation:
+      - Round-robin across all configured consumer keys.
+      - On 429: current key marked with cooldown (default 5 min), next key tried.
+      - On 401/403: current key marked dead until restart, next key tried.
+      - If all keys are dead/cooling, the client raises after one full cycle.
+    """
+
+    _COOLDOWN_429_S = 300       # 5-minute cooldown after rate-limit
+    _COOLDOWN_AUTH_S = 86_400   # effectively dead for the session
 
     def __init__(self, redis_client: aioredis.Redis | None = None) -> None:
-        self._keys: list[str] = list(settings.tumblr_api_keys)
+        # Prefer credentials list; fall back to legacy single-key list.
+        self._keys: list[str] = list(settings.all_consumer_keys)
         self._key_idx = 0
+        self._cooldowns: dict[str, float] = {}  # key → epoch seconds when usable again
         self._redis = redis_client
         self._session: aiohttp.ClientSession | None = None
         self._lua_sha: str | None = None
 
     async def __aenter__(self) -> "TumblrClient":
-        self._session = aiohttp.ClientSession()
+        # Tumblr's edge silently drops connections that look like bots:
+        #   - Default aiohttp UA ("Python/3.x aiohttp/3.x") → disconnect.
+        #   - Custom UA suffix (e.g. "MIR-FeedX/0.1") → also disconnect.
+        # Use a clean browser UA + explicit SSL context + force_close to dodge
+        # connection reuse oddities.
+        import ssl
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36"
+            ),
+            "Accept": "application/json",
+        }
+        ssl_ctx = ssl.create_default_context()
+        connector = aiohttp.TCPConnector(ssl=ssl_ctx, force_close=True)
+        self._session = aiohttp.ClientSession(headers=headers, connector=connector)
         if self._redis and self._keys:
             self._lua_sha = await self._redis.script_load(_TOKEN_BUCKET_LUA)
         return self
@@ -76,11 +98,29 @@ class TumblrClient:
     # ------------------------------------------------------------------
 
     def _next_key(self) -> str:
+        """Return next non-cooldown key. Raises if all keys are unavailable."""
         if not self._keys:
-            raise RuntimeError("No Tumblr API keys configured (TUMBLR_API_KEYS is empty)")
-        key = self._keys[self._key_idx % len(self._keys)]
-        self._key_idx += 1
-        return key
+            raise RuntimeError("No Tumblr API keys configured (TUMBLR_API_CREDENTIALS empty)")
+        now = time.time()
+        n = len(self._keys)
+        for _ in range(n):
+            key = self._keys[self._key_idx % n]
+            self._key_idx += 1
+            cooldown_until = self._cooldowns.get(key, 0)
+            if cooldown_until <= now:
+                return key
+        # All keys on cooldown
+        soonest = min(self._cooldowns.values()) if self._cooldowns else 0
+        wait = max(0, soonest - now)
+        raise RuntimeError(
+            f"All {n} Tumblr API keys exhausted/cooling down. Soonest available in {wait:.0f}s."
+        )
+
+    def _mark_cooldown(self, key: str, seconds: float, reason: str) -> None:
+        until = time.time() + seconds
+        self._cooldowns[key] = until
+        masked = key[:8] + "…" + key[-4:]
+        log.warning("Key %s on cooldown for %.0fs (%s)", masked, seconds, reason)
 
     @staticmethod
     def _bucket_redis_key(api_key: str) -> str:
@@ -106,12 +146,17 @@ class TumblrClient:
             await asyncio.sleep(1)
 
     async def _request(self, path: str, params: dict[str, Any]) -> Any:
-        """Execute a GET request with per-key rate limiting and 429 back-off."""
+        """Execute a GET request with per-key rate limiting and key rotation on failure."""
         assert self._session is not None, "Use TumblrClient as an async context manager"
-        backoff = _BACKOFF_BASE
+        attempts = 0
+        max_attempts = max(len(self._keys) * 2, 4)
 
         while True:
-            api_key = self._next_key()
+            attempts += 1
+            if attempts > max_attempts:
+                raise RuntimeError(f"Exhausted {max_attempts} attempts on {path}")
+
+            api_key = self._next_key()  # may raise if all keys cooling
             await self._acquire_token(api_key)
             params["api_key"] = api_key
 
@@ -122,11 +167,13 @@ class TumblrClient:
                     timeout=aiohttp.ClientTimeout(total=30),
                 ) as resp:
                     if resp.status == 429:
-                        jitter = random.uniform(0, backoff * 0.5)
-                        sleep_for = min(backoff + jitter, _BACKOFF_MAX)
-                        log.warning("Rate-limited (429). Sleeping %.1fs", sleep_for)
-                        await asyncio.sleep(sleep_for)
-                        backoff = min(backoff * 2, _BACKOFF_MAX)
+                        # Rate-limited: cool down THIS key, immediately try next.
+                        self._mark_cooldown(api_key, self._COOLDOWN_429_S, "429 rate-limit")
+                        continue
+
+                    if resp.status in (401, 403):
+                        # Auth failure: kill key for the session, try next.
+                        self._mark_cooldown(api_key, self._COOLDOWN_AUTH_S, f"HTTP {resp.status}")
                         continue
 
                     resp.raise_for_status()
