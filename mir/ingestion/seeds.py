@@ -1,12 +1,19 @@
 """
-Seed blog list for the MIR crawler.
+Seed data for the MIR crawler.
 
-Real, known-active Tumblr blogs organised by genre.
+Real, known Tumblr blogs organised by genre.
 Pass to Crawler.crawl(seed_blogs=SEED_BLOGS) to bootstrap CrawlState.
-Discovery from reblog chains will expand the corpus automatically after
-the first run.
+Discovery from reblog chains expands the corpus automatically.
+
+Also provides SEED_TAGS (tag-crawl seeds) and SEED_COMMUNITIES
+(conceptual community groupings — used to derive Community records
+once accounts are indexed).
 """
 from __future__ import annotations
+
+# ---------------------------------------------------------------------------
+# Blogs
+# ---------------------------------------------------------------------------
 
 SEED_BLOGS_BY_GENRE: dict[str, list[str]] = {
     "art_design": [
@@ -16,9 +23,20 @@ SEED_BLOGS_BY_GENRE: dict[str, list[str]] = {
         "itscolossal",
         "crossconnectmag",
         "artsy",
-        "designspiration",
         "boingboing",
-        "thisiswhyimbroke",
+        "jedavu",
+        "likeafieldmouse",
+        "sosuperawesome",
+        "paintingselection",
+        "mybeingthere",
+        "strictlypaper",
+        "subliminaleye",
+        "artchipel",
+        "nevver",
+        "ignant",
+        "ianbrooks",
+        "escapekit",
+        "fastcodesign",
     ],
     "photography": [
         "photojojo",
@@ -28,8 +46,17 @@ SEED_BLOGS_BY_GENRE: dict[str, list[str]] = {
         "magnumphotos",
         "nationalgeographic",
         "500px",
-        "flickr",
-        "eyeem",
+        "lightsoflife",
+        "wildandvisual",
+        "jaredatkinsphoto",
+        "visualgraphc",
+        "photographsonthebrain",
+        "fotojournalismus",
+        "foxfoxwolf",
+        "aqqindex",
+        "photo-synthesis",
+        "ourbedtimestory",
+        "eyesonthestreet",
     ],
     "fashion_style": [
         "fashionistable",
@@ -40,18 +67,30 @@ SEED_BLOGS_BY_GENRE: dict[str, list[str]] = {
         "vogue",
         "harpersbazaar",
         "refinery29",
-        "theoutnet",
+        "fashgif",
+        "fuckyeah-highfashion",
+        "modedamour",
+        "fashionforeplay",
+        "street-fashion-world",
+        "thevandallist",
+        "theclosetfeminist",
     ],
     "music": [
         "pitchfork",
         "npr-music",
         "stereogum",
         "songaday",
-        "8tracks",
-        "songkick",
         "bandcamp",
         "musicradar",
-        "theverge",
+        "vibesofmusic",
+        "classicalmusiclove",
+        "jazzers",
+        "mpdrolet",
+        "music-is-all-i-feel",
+        "iheartvinyl",
+        "concertphotography",
+        "hiphopdx",
+        "rockandrollhigh-school",
     ],
     "writing_literature": [
         "writingpromptsworld",
@@ -59,21 +98,33 @@ SEED_BLOGS_BY_GENRE: dict[str, list[str]] = {
         "thewritingcafe",
         "wordsnquotes",
         "yeoldenews",
-        "archiveofourown",
-        "wattpad",
-        "medium",
-        "goodreads",
+        "grumpybookseller",
+        "bookriot",
+        "bibliophilefiles",
+        "writersrelief",
+        "the-librarian-who",
+        "readmorebooks",
+        "literatureismyutopia",
+        "nerds-and-words",
+        "write-like-hemingway",
+        "the-reading-life",
     ],
     "gaming": [
-        "gamespot",
         "kotaku",
         "ilovevideogamessomuch",
         "pixelatedcrown",
         "theomeganerd",
-        "ign",
         "polygon",
-        "rockpapershotgun",
-        "pcgamer",
+        "videogamenostalgia",
+        "gaminginsanity",
+        "retrogamingblog",
+        "vgjunk",
+        "gamersbliss",
+        "snesdrunknerd",
+        "8bitrust",
+        "fuckyeahvideogames",
+        "pixelgames",
+        "gaminggifs",
     ],
     "anime_manga": [
         "animatedtext",
@@ -81,10 +132,16 @@ SEED_BLOGS_BY_GENRE: dict[str, list[str]] = {
         "shonenjump",
         "fuckyeahanime",
         "mangacap",
-        "myanimelist",
-        "crunchyroll",
-        "animeplanet",
-        "animenewsnetwork",
+        "miyazaki-art",
+        "ghibliuniverse",
+        "fuckyeahonepiece",
+        "attackontitan-blog",
+        "spirited-art",
+        "dragonballfandom",
+        "narutobomb",
+        "animeirl",
+        "haikyuufandom",
+        "bleach-anime",
     ],
     "science_technology": [
         "nasa",
@@ -94,8 +151,17 @@ SEED_BLOGS_BY_GENRE: dict[str, list[str]] = {
         "thescienceofreality",
         "wired",
         "gizmodo",
-        "lifehacker",
         "smithsonianmag",
+        "theatlantic",
+        "mentalfloss",
+        "todayilearned",
+        "ifuckinglovescience",
+        "science-side-of-tumblr",
+        "quantumphysics4u",
+        "thecosmicwanderer",
+        "astronomicalwonders",
+        "brainpicker",
+        "howstuffworks",
     ],
     "nature_environment": [
         "earth-song",
@@ -103,10 +169,16 @@ SEED_BLOGS_BY_GENRE: dict[str, list[str]] = {
         "animalworld",
         "wildlifegifsblog",
         "oceanatdawn",
-        "worldwildlife",
-        "greenpeace",
-        "nature",
-        "bbc-earth",
+        "thenewgreen",
+        "saveearth",
+        "mothernaturenetwork",
+        "naturegifs",
+        "beautiful-wildlife",
+        "earthporn-co",
+        "treehugger",
+        "malformalady",
+        "plantscientist",
+        "oceanmindset",
     ],
     "travel": [
         "travelingcolors",
@@ -115,9 +187,15 @@ SEED_BLOGS_BY_GENRE: dict[str, list[str]] = {
         "departured",
         "theworldlookslikethis",
         "lonelyplanet",
-        "roughguides",
-        "condenasttraveler",
         "nomadicmatt",
+        "travel-babe",
+        "destinations-i-love",
+        "aroundtheworldin80travels",
+        "insidetravellab",
+        "the-wandering-dreamers",
+        "travelwild",
+        "everywheremagazine",
+        "maps-and-planes",
     ],
     "food_cooking": [
         "foodffs",
@@ -129,6 +207,12 @@ SEED_BLOGS_BY_GENRE: dict[str, list[str]] = {
         "foodandwine",
         "seriouseats",
         "thekitchn",
+        "just-food-photos",
+        "food52",
+        "fuckyeahcooking",
+        "vegansofig",
+        "pastrywitch",
+        "foodphotoofday",
     ],
     "film_tv": [
         "cinemastatic",
@@ -136,21 +220,35 @@ SEED_BLOGS_BY_GENRE: dict[str, list[str]] = {
         "filmforlife",
         "criterion",
         "screenmusings",
-        "criterion-collection",
         "hollywoodreporter",
         "variety",
-        "deadline",
+        "oldfilmsflicker",
+        "80smovies",
+        "cinephilearchive",
+        "scifi-and-fantasy",
+        "fuckyeahfilmnoir",
+        "filmgrab",
+        "moviesinframes",
+        "cinematically",
+        "stillsfromfilms",
+        "thecinefiles",
     ],
     "humor_memes": [
         "tastefullyoffensive",
-        "funnyordie",
         "textsfromlastnight",
         "4gifs",
         "lolsomeone",
-        "failblog",
-        "cheezburger",
-        "memecenter",
-        "ebaums",
+        "pleatedjeans",
+        "unexplained-events",
+        "iraffiruse",
+        "thefrogman",
+        "seriouslythough",
+        "horriblewarnings",
+        "humoristics",
+        "incorrectquotes",
+        "incorrectquotesandmore",
+        "cursedimages",
+        "cleanmemesfam",
     ],
     "history": [
         "historicaltimes",
@@ -161,7 +259,14 @@ SEED_BLOGS_BY_GENRE: dict[str, list[str]] = {
         "britishmuseum",
         "metmuseum",
         "louvre",
-        "britannica",
+        "ancientpeoples",
+        "arthistory451",
+        "vintageeveryday",
+        "historicaltimes",
+        "forgottenhistory",
+        "1900sguy",
+        "colorizedhistory",
+        "historysquatch",
     ],
     "beauty_wellness": [
         "thelipsticklesbians",
@@ -172,22 +277,209 @@ SEED_BLOGS_BY_GENRE: dict[str, list[str]] = {
         "mindbodygreen",
         "wellnessmama",
         "healthyfoodhouse",
-        "fitsugar",
+        "thehairrepublic",
+        "naturalhaircommunity",
+        "skincareobsessed",
+        "meditationmoments",
+        "selfloveclub",
+        "mentalhealthawareness",
+        "finessethought",
     ],
     "pets_animals": [
         "dailybunny",
         "cuteoverload",
-        "dogsofinstaworld",
-        "catsof",
         "zfrankenfluffy",
-        "thepuppydogpalace",
         "barkpost",
         "thedodo",
-        "animalplanet",
+        "hedgehogsandcats",
+        "catsbeaversandducks",
+        "cuteanimalsinapicture",
+        "mymodernmet",
+        "officialanimalpictures",
+        "meow-sensei",
+        "dogapult",
+        "pugsequalslove",
+        "spookylittlecat",
+        "rabbittales",
+    ],
+    "social_justice": [
+        "blackmatterspgh",
+        "lgbtlaughs",
+        "plannedparenthood",
+        "nsfwfeminist",
+        "intersectionalfeminism101",
+        "queersocialist",
+        "prisonculture",
+        "iwriteaboutfeminism",
+        "the-movemnt",
+        "afro-dominicano",
+        "latinxpride",
+        "decolonizeyourmind",
+        "womanistgamergirl",
+        "yung-afro-chic",
+    ],
+    "architecture_interiors": [
+        "fuckyeahbrutalism",
+        "architectuul",
+        "architecturedaily",
+        "dezeen",
+        "archdaily",
+        "myinterior",
+        "homeadore",
+        "domainehome",
+        "apartmenttherapy",
+        "homedsgn",
+        "livingspaces",
+        "modernindenver",
+        "ihavethisthingwithfloors",
+    ],
+    "comics_illustration": [
+        "sarahcandersen",
+        "poorlydrawnlines",
+        "explodingdog",
+        "questionablecontent",
+        "toothpastefordinner",
+        "nedroid",
+        "catana-comics",
+        "gemma-correll",
+        "lunarbaboon",
+        "simonstalenhag",
+        "pryce14",
+        "randowis",
+        "chibird",
+        "lizclimo",
     ],
 }
 
-# Flat list for passing directly to Crawler.crawl()
-SEED_BLOGS: list[str] = [
+# ---------------------------------------------------------------------------
+# Flat list for Crawler.crawl(seed_blogs=SEED_BLOGS)
+# ---------------------------------------------------------------------------
+
+SEED_BLOGS: list[str] = sorted(set(
     blog for blogs in SEED_BLOGS_BY_GENRE.values() for blog in blogs
+))
+
+
+# ---------------------------------------------------------------------------
+# Tags — crawled via /v2/tagged for bootstrapping tag-based discovery
+# ---------------------------------------------------------------------------
+
+SEED_TAGS: list[str] = [
+    # Art & Design
+    "digital art", "illustration", "concept art", "graphic design",
+    "watercolor", "oil painting", "street art", "pixel art",
+    # Photography
+    "photography", "analog photography", "film photography", "portrait",
+    "landscape photography", "black and white", "street photography",
+    # Science & Space
+    "space", "astronomy", "physics", "biology", "neuroscience",
+    "climate change", "ocean", "nasa", "science",
+    # Pop culture
+    "fanart", "fandom", "cosplay", "memes", "aesthetic",
+    # Music
+    "music", "indie music", "jazz", "hip hop", "classical music",
+    "vinyl", "lo fi", "alternative",
+    # Writing
+    "poetry", "writing", "fiction", "short story", "prose",
+    "creative writing", "literature",
+    # Nature
+    "nature", "wildlife", "flowers", "forest", "ocean",
+    "animals", "cats", "dogs",
+    # Fashion
+    "fashion", "style", "streetwear", "vintage fashion", "sustainable fashion",
+    # Food
+    "food", "vegan", "baking", "cooking", "dessert", "coffee",
+    # Travel
+    "travel", "architecture", "cityscape", "japan", "europe",
+    # Gaming
+    "gaming", "retro gaming", "nintendo", "playstation", "game art",
+    # Anime
+    "anime", "manga", "studio ghibli", "my hero academia", "attack on titan",
+    # Wellness
+    "mental health", "self care", "yoga", "meditation", "fitness",
+    # Social
+    "lgbtq", "pride", "feminism", "activism", "black excellence",
+    # Humor
+    "funny", "humor", "shitpost", "relatable",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Community seeds — conceptual groupings used by rebuild_communities task
+# Keyed by community name; value is a list of defining seed tags/blogs.
+# ---------------------------------------------------------------------------
+
+SEED_COMMUNITIES: dict[str, dict] = {
+    "science_and_space": {
+        "type": "tag_cluster",
+        "seed_tags": ["space", "astronomy", "physics", "nasa", "science", "neuroscience"],
+        "seed_blogs": ["nasa", "scishow", "spaceplasma", "neurosciencestuff", "smithsonianmag"],
+        "description": "Science, space exploration, and technology",
+    },
+    "visual_arts": {
+        "type": "tag_cluster",
+        "seed_tags": ["digital art", "illustration", "watercolor", "oil painting", "concept art"],
+        "seed_blogs": ["theartidote", "asylum-art", "itscolossal", "nevver", "jedavu"],
+        "description": "Paintings, illustration, and visual art",
+    },
+    "photography": {
+        "type": "tag_cluster",
+        "seed_tags": ["photography", "film photography", "portrait", "landscape photography"],
+        "seed_blogs": ["photojojo", "natgeofound", "magnumphotos", "lensblr-network"],
+        "description": "Photography and visual storytelling",
+    },
+    "anime_and_manga": {
+        "type": "tag_cluster",
+        "seed_tags": ["anime", "manga", "studio ghibli", "my hero academia", "fanart"],
+        "seed_blogs": ["studioghibligifs", "fuckyeahanime", "miyazaki-art", "ghibliuniverse"],
+        "description": "Anime, manga, and Japanese animation",
+    },
+    "music_culture": {
+        "type": "tag_cluster",
+        "seed_tags": ["music", "indie music", "jazz", "hip hop", "vinyl"],
+        "seed_blogs": ["pitchfork", "npr-music", "bandcamp", "iheartvinyl"],
+        "description": "Music discovery and culture",
+    },
+    "nature_wildlife": {
+        "type": "tag_cluster",
+        "seed_tags": ["nature", "wildlife", "ocean", "forest", "animals"],
+        "seed_blogs": ["earth-song", "animalworld", "wildlifegifsblog", "oceanatdawn"],
+        "description": "Nature, wildlife, and environmental beauty",
+    },
+    "lgbtq_community": {
+        "type": "account_cluster",
+        "seed_tags": ["lgbtq", "pride", "queer", "trans"],
+        "seed_blogs": ["lgbtlaughs", "plannedparenthood", "queersocialist"],
+        "description": "LGBTQ+ voices and community",
+    },
+    "film_and_cinema": {
+        "type": "tag_cluster",
+        "seed_tags": ["film", "cinema", "movie", "director"],
+        "seed_blogs": ["criterion", "cinemastatic", "filmgrab", "oldfilmsflicker"],
+        "description": "Film criticism, classic cinema, and movie culture",
+    },
+    "gaming": {
+        "type": "tag_cluster",
+        "seed_tags": ["gaming", "retro gaming", "nintendo", "game art"],
+        "seed_blogs": ["kotaku", "vgjunk", "retrogamingblog", "fuckyeahvideogames"],
+        "description": "Video games, gaming culture, and game art",
+    },
+    "literature_and_writing": {
+        "type": "tag_cluster",
+        "seed_tags": ["poetry", "writing", "fiction", "literature"],
+        "seed_blogs": ["writingpromptsworld", "thewritingcafe", "wordsnquotes", "grumpybookseller"],
+        "description": "Books, poetry, creative writing",
+    },
+    "mental_health": {
+        "type": "account_cluster",
+        "seed_tags": ["mental health", "self care", "meditation", "anxiety"],
+        "seed_blogs": ["mindful-recovery", "selfloveclub", "mentalhealthawareness"],
+        "description": "Mental health awareness and wellness",
+    },
+    "street_culture": {
+        "type": "tag_cluster",
+        "seed_tags": ["street art", "streetwear", "hip hop", "urban"],
+        "seed_blogs": ["crossconnectmag", "ignant", "escapekit"],
+        "description": "Street art, urban culture, and streetwear",
+    },
+}

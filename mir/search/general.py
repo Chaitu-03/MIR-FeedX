@@ -152,15 +152,22 @@ async def _keyword_search(
 ) -> list[tuple[int, float, int, datetime | None]]:
     """
     Full-text search using ts_body GIN index.
+
+    Uses websearch_to_tsquery (PostgreSQL ≥ 11) which natively supports:
+      - Quoted phrases: "new york" → adjacent match
+      - AND:  foo bar  → both words required
+      - OR:   foo OR bar
+      - NOT:  foo -bar
+
     Returns list of (post_id, kw_score, note_count, published_at).
     """
     sql = text("""
         SELECT p.id,
-               ts_rank_cd(p.ts_body, plainto_tsquery('english', :q)) AS kw_score,
+               ts_rank_cd(p.ts_body, websearch_to_tsquery('english', :q)) AS kw_score,
                p.note_count,
                p.published_at
         FROM posts p
-        WHERE p.ts_body @@ plainto_tsquery('english', :q)
+        WHERE p.ts_body @@ websearch_to_tsquery('english', :q)
           AND p.nsfw = false
           AND (:lang      IS NULL OR p.lang         = :lang)
           AND (:date_from IS NULL OR p.published_at >= :date_from::timestamptz)

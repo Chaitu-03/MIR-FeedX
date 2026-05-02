@@ -21,7 +21,15 @@ class GeneralSearchFilters(BaseModel):
 
 
 class GeneralSearchRequest(BaseModel):
-    query: str = Field(..., min_length=1, max_length=500, description="Free-text query")
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description=(
+            'Free-text query. Supports phrase search with double quotes: '
+            '"new york" science. Also supports OR and negation: astronomy -astrology.'
+        ),
+    )
     filters: GeneralSearchFilters = Field(default_factory=GeneralSearchFilters)
     limit_posts: int = Field(20, ge=1, le=100)
     limit_accounts: int = Field(10, ge=0, le=50)
@@ -30,7 +38,7 @@ class GeneralSearchRequest(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": {
-                "query": "photography landscape",
+                "query": '"space exploration" nasa',
                 "filters": {"lang": "en", "min_notes": 50},
                 "limit_posts": 20,
                 "limit_accounts": 10,
