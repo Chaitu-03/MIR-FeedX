@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import html as _html_stdlib
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+import bleach
 from sqlalchemy import false, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mir.config import settings
-from mir.db.models import CrawlState, Post
+from mir.db.models import Account, CrawlState, Post, PostTag, Tag
 from mir.ingestion.client import TumblrClient
 from mir.ingestion.images import ImageDownloader
 
@@ -18,6 +22,48 @@ EXCLUDED_POST_TYPES: frozenset[str] = frozenset({"video"})
 
 _STORAGE_CAP_BYTES = 100 * 1024**3  # 100 GiB
 _RAW_IMAGE_DIR = Path("data/raw_images")
+
+_STYLE_SCRIPT_RE = re.compile(r"<(style|script)[^>]*>.*?</\1>", re.DOTALL | re.IGNORECASE)
+
+
+def _strip_html(html: str) -> str:
+    """Lightweight HTML → plain text (no ML models required)."""
+    if not html:
+        return ""
+    no_blocks = _STYLE_SCRIPT_RE.sub("", html)
+    stripped = bleach.clean(no_blocks, tags=[], strip=True)
+    return _html_stdlib.unescape(stripped).strip()
+
+
+def _extract_body(post: dict) -> tuple[str | None, str | None]:
+    """Return (body_raw, body_clean) based on post type."""
+    ptype = post.get("type", "")
+    raw: str | None = None
+    if ptype == "text":
+        raw = post.get("body") or post.get("title") or None
+    elif ptype == "photo":
+        raw = post.get("caption") or None
+    elif ptype == "quote":
+        raw = post.get("text") or None
+    elif ptype == "link":
+        raw = post.get("description") or post.get("title") or None
+    elif ptype == "answer":
+        raw = (post.get("question") or "") + "\n" + (post.get("answer") or "")
+    elif ptype == "chat":
+        lines = [f"{d.get('label','')} {d.get('phrase','')}" for d in post.get("dialogue", [])]
+        raw = "\n".join(lines) or None
+    clean = _strip_html(raw) if raw else None
+    return raw, clean
+
+
+def _extract_image_urls(post: dict) -> list[str]:
+    urls: list[str] = []
+    for photo in post.get("photos") or []:
+        orig = photo.get("original_size") or {}
+        url = orig.get("url")
+        if url:
+            urls.append(url)
+    return urls
 
 
 class Crawler:
@@ -91,12 +137,94 @@ class Crawler:
                     CrawlState(blog_name=blog_name, status="pending", fail_count=0)
                 )
 
-    async def _process_post(self, post: dict, blog_name: str) -> None:
-        """Hand off a single non-video post to the image downloader.
+    async def _get_or_create_account(self, blog_name: str) -> int:
+        """Return accounts.id for blog_name, creating the row if absent."""
+        stmt = (
+            pg_insert(Account)
+            .values(blog_name=blog_name)
+            .on_conflict_do_nothing(index_elements=["blog_name"])
+            .returning(Account.id)
+        )
+        row = await self._db.scalar(stmt)
+        if row is None:
+            # Row already existed — fetch it
+            row = await self._db.scalar(
+                select(Account.id).where(Account.blog_name == blog_name)
+            )
+        return row  # type: ignore[return-value]
 
-        Full NLP/embedding processing is handled by the processing module;
-        this layer is responsible only for raw image acquisition.
+    async def _persist_post(self, post: dict, blog_name: str) -> int | None:
         """
+        Upsert Account + Post + Tags for one Tumblr post dict.
+        Returns the Post.id on success, None if tumblr_id missing.
+        """
+        tumblr_id = post.get("id")
+        if not tumblr_id:
+            return None
+
+        account_id = await self._get_or_create_account(blog_name)
+
+        body_raw, body_clean = _extract_body(post)
+        image_urls = _extract_image_urls(post)
+        published_at: datetime | None = None
+        ts = post.get("timestamp")
+        if ts:
+            published_at = datetime.fromtimestamp(int(ts), tz=timezone.utc)
+
+        stmt = (
+            pg_insert(Post)
+            .values(
+                tumblr_id=int(tumblr_id),
+                account_id=account_id,
+                post_type=post.get("type"),
+                body_raw=body_raw,
+                body_clean=body_clean,
+                image_urls=image_urls or None,
+                note_count=int(post.get("note_count") or 0),
+                reblog_key=post.get("reblog_key"),
+                published_at=published_at,
+            )
+            .on_conflict_do_update(
+                index_elements=["tumblr_id"],
+                set_={
+                    "note_count": int(post.get("note_count") or 0),
+                    "image_urls": image_urls or None,
+                },
+            )
+            .returning(Post.id)
+        )
+        post_id = await self._db.scalar(stmt)
+
+        # Upsert tags
+        tag_names: list[str] = [t for t in (post.get("tags") or []) if t]
+        for tag_name in tag_names:
+            tag_stmt = (
+                pg_insert(Tag)
+                .values(name=tag_name)
+                .on_conflict_do_update(
+                    index_elements=["name"],
+                    set_={"usage_count": Tag.usage_count + 1},
+                )
+                .returning(Tag.id)
+            )
+            tag_id = await self._db.scalar(tag_stmt)
+            if post_id and tag_id:
+                pt_stmt = (
+                    pg_insert(PostTag)
+                    .values(post_id=post_id, tag_id=tag_id)
+                    .on_conflict_do_nothing()
+                )
+                await self._db.execute(pt_stmt)
+
+        await self._db.flush()
+        return post_id
+
+    async def _process_post(self, post: dict, blog_name: str) -> None:
+        """Persist post metadata to DB, then download raw images."""
+        post_id = await self._persist_post(post, blog_name)
+        if post_id is None:
+            log.warning("Skipping post with no id from %s", blog_name)
+            return
         await self._downloader.download_post_images(post, blog_name)
 
     async def _check_storage(self) -> None:
