@@ -169,10 +169,10 @@ async def _keyword_search(
         FROM posts p
         WHERE p.ts_body @@ websearch_to_tsquery('english', :q)
           AND p.nsfw = false
-          AND (:lang      IS NULL OR p.lang         = :lang)
-          AND (:date_from IS NULL OR p.published_at >= :date_from::timestamptz)
-          AND (:date_to   IS NULL OR p.published_at <= :date_to::timestamptz)
-          AND (:min_notes IS NULL OR p.note_count   >= :min_notes)
+          AND (CAST(:lang      AS TEXT)        IS NULL OR p.lang         = CAST(:lang      AS TEXT))
+          AND (CAST(:date_from AS TIMESTAMPTZ) IS NULL OR p.published_at >= CAST(:date_from AS TIMESTAMPTZ))
+          AND (CAST(:date_to   AS TIMESTAMPTZ) IS NULL OR p.published_at <= CAST(:date_to   AS TIMESTAMPTZ))
+          AND (CAST(:min_notes AS INTEGER)     IS NULL OR p.note_count   >= CAST(:min_notes AS INTEGER))
         ORDER BY kw_score DESC
         LIMIT :limit
     """)

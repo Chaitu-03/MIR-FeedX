@@ -16,8 +16,8 @@ async def get_db() -> AsyncSession:
 
 
 def get_qdrant(request: Request):
-    return request.app.state.qdrant
+    return getattr(request.app.state, "qdrant", None)
 
 
 def get_text_processor(request: Request):
-    return request.app.state.text_processor
+    return getattr(request.app.state, "text_processor", None)
